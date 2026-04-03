@@ -55,7 +55,7 @@ Mặc dù công cụ được tối ưu chống Bot (Anti-detect), nhưng nếu 
 Dự án hiện tại được chia làm 2 phần độc lập:
 
 1.  **`web/`**: Chứa code Python + Selenium + Flask. Dùng để chạy bot trên máy tính hoặc điều khiển từ xa qua trình duyệt.
-2.  **`mobile/`**: Chứa code **AutoJS (JavaScript)**. Dùng để chạy bot tự động 100% trên điện thoại Android mà không cần máy tính.
+2.  **`mobile/`**: Chứa code **React Native (Standalone APK)**. Dùng để build thành 1 file APK chạy bot tự động 100% trên điện thoại mà không cần máy tính.
 
 ---
 
@@ -76,29 +76,33 @@ python3 server.py
 
 ---
 
-## 📱 Hướng dẫn Mobile AutoJS (`mobile/`)
+## 📱 Hướng dẫn Mobile APK Bot (`mobile/`)
 
-Giải pháp này cho phép bot tự động bình luận trực tiếp trên App Facebook thật của điện thoại.
+Đây là bản **Standalone APK** — một ứng dụng Android độc lập, có sẵn trình duyệt và bộ tự động hóa bên trong. Bạn chỉ cần cài 1 file APK duy nhất là có thể chạy bot 100% trên điện thoại.
 
-### 1. Cài đặt trên điện thoại
-1.  Tải và cài đặt ứng dụng **AutoJS** (Bản Pro hoặc bản miễn phí hỗ trợ Accessibility).
-2.  Cấp quyền **Accessibility Service** (Dịch vụ hỗ trợ) cho AutoJS trong cài đặt điện thoại.
+### 1. Cơ chế hoạt động
+- App tích hợp một vùng trình duyệt (WebView) để chạy Facebook Mobile.
+- Bot sẽ tự động "bơm" JavaScript vào trình duyệt này để thực hiện các thao tác bình luận.
+- Mọi dữ liệu (Group, Comment) được lưu trực tiếp trên bộ nhớ điện thoại.
 
-### 2. Chạy Bot
-1.  Copy toàn bộ thư mục `mobile/` vào bộ nhớ điện thoại (hoặc copy nội dung file `main.js`).
-2.  Mở AutoJS → Chọn file `main.js` → Nhấn nút **Play (Chạy)**.
-3.  **Sử dụng Dashboard:**
-    -   Nhập danh sách Group URL và Câu bình luận vào tab **Dữ liệu**.
-    -   Quay lại tab **Điều khiển** → Nhấn **BẮT ĐẦU CHẠY**.
-    -   Bot sẽ tự mở Facebook và thực hiện các thao tác bình luận.
-
-### 3. Đẩy code nhanh qua ADB (Dành cho Dev)
-Nếu bạn lười copy file thủ công, hãy cắm cáp USB và chạy lệnh này trên máy tính để đẩy code thẳng vào điện thoại:
+### 2. Cách Build & Cài đặt
+Để tạo ra file APK và cài vào máy, hãy chạy lệnh sau từ máy tính (yêu cầu cắm cáp USB và cài Android SDK):
 ```bash
-# Đẩy file main.js vào thư mục download của điện thoại
-adb push mobile/main.js /sdcard/Download/
+cd mobile
+# Cài đặt môi trường và build thẳng vào điện thoại
+export ANDROID_HOME="$HOME/Android/Sdk" && \
+export PATH="$PATH:$ANDROID_HOME/platform-tools" && \
+npx expo run:android
 ```
-*Sau đó trong AutoJS, bạn chỉ cần mở file từ thư mục Download và chạy.*
+
+### 3. Cách sử dụng trên điện thoại
+1. Mở app **Facebook Auto Comment Bot** vừa được cài đặt.
+2. Đăng nhập tài khoản Facebook của bạn ngay trong App (phần trình duyệt phía dưới).
+3. Tại bảng điều khiển:
+    - Nhập danh sách Group và nội dung Comment.
+    - Nhấn **Lưu dữ liệu**.
+    - Nhấn **Bắt đầu chạy**.
+4. Theo dõi tiến độ tại mục **Nhật ký hoạt động**.
 
 ---
 # auto_service
