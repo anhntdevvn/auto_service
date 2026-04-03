@@ -1,32 +1,51 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, SafeAreaView, Dimensions, Keyboard, TouchableWithoutFeedback, Modal, FlatList } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Alert, Dimensions, FlatList, Keyboard, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
+import { facebookWebViewBridgeScript } from './src/facebook_webview_bridge';
 
-const { width, height: screenHeight } = Dimensions.get('window');
+const { height: screenHeight } = Dimensions.get('window');
 
-// --- Helper for the injected script ---
-import { automationScript } from './src/automation_string';
+const GROUPS_MEMBERSHIP_URL = 'https://m.facebook.com/groups/?category=membership';
+
+type BotConfig = {
+  comments: string[];
+  delay: number;
+  maxPosts: number;
+};
+
+type BridgeCommand =
+  | { type: 'fetch_groups' }
+  | { type: 'stop' }
+  | { config: BotConfig; type: 'start' };
+
+type FetchedGroup = {
+  name: string;
+  selected: boolean;
+  url: string;
+};
+
+type BridgeMessage =
+  | { message?: string; type: 'groups_fetch_empty' | 'groups_fetch_error' | 'groups_fetch_started' | 'log' }
+  | { message: Array<{ name: string; url: string }>; type: 'groups_fetched' }
+  | { count?: number; message?: { count?: number }; type: 'progress' };
 
 export default function App() {
   const [groups, setGroups] = useState('');
   const [comments, setComments] = useState('');
   const [maxPosts, setMaxPosts] = useState('5');
   const [delay, setDelay] = useState('10');
-  const [logs, setLogs] = useState([]);
+  const [logs, setLogs] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
-  const [currentGroupIndex, setCurrentGroupIndex] = useState(0);
   const [currentUrl, setCurrentUrl] = useState('https://m.facebook.com');
-
-  // New state for Fetch Groups
-  const [fetchedGroups, setFetchedGroups] = useState([]);
+  const [fetchedGroups, setFetchedGroups] = useState<FetchedGroup[]>([]);
   const [showSelector, setShowSelector] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
 
-  const webViewRef = useRef(null);
+  const webViewRef = useRef<WebView>(null);
+  const loadedUrlRef = useRef(currentUrl);
 
-  // Load settings on boot
   useEffect(() => {
     loadSettings();
   }, []);
@@ -52,86 +71,201 @@ export default function App() {
     }
   };
 
-  const addLog = (msg) => {
-    setLogs(prev => [new Date().toLocaleTimeString() + ': ' + msg, ...prev].slice(0, 50));
+  const addLog = (message: string) => {
+    setLogs((previousLogs) => [new Date().toLocaleTimeString() + ': ' + message, ...previousLogs].slice(0, 50));
+  };
+
+  const parsePositiveInt = (value: string, fallback: number) => {
+    const parsed = parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  };
+
+  const normalizeUrl = (value: string) => value.replace(/\/+$/, '');
+
+  const buildStartCommand = (): BridgeCommand => ({
+    type: 'start',
+    config: {
+      maxPosts: parsePositiveInt(maxPosts, 5),
+      delay: parsePositiveInt(delay, 10),
+      comments: comments.split('\n').map((comment) => comment.trim()).filter(Boolean),
+    },
+  });
+
+  const buildBridgeInjection = (command: BridgeCommand) => {
+    const serializedCommand = JSON.stringify(command);
+    const escapedCommand = JSON.stringify(serializedCommand);
+
+    return `
+      (function() {
+        var payload = ${escapedCommand};
+
+        try {
+          var command = JSON.parse(payload);
+          if (window.__FB_BOT_BRIDGE__ && typeof window.__FB_BOT_BRIDGE__.receiveCommand === 'function') {
+            window.__FB_BOT_BRIDGE__.receiveCommand(command);
+          } else if (window.postMessage) {
+            var raw = JSON.stringify(command);
+            window.postMessage(raw, '*');
+
+            try {
+              var messageEvent = new MessageEvent('message', { data: raw });
+              if (document && typeof document.dispatchEvent === 'function') {
+                document.dispatchEvent(messageEvent);
+              }
+              if (window && typeof window.dispatchEvent === 'function') {
+                window.dispatchEvent(messageEvent);
+              }
+            } catch (messageEventError) {}
+          }
+        } catch (error) {
+          if (window.ReactNativeWebView && typeof window.ReactNativeWebView.postMessage === 'function') {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'log',
+              message: 'Không thể gửi lệnh bridge: ' + error.message
+            }));
+          }
+        }
+
+        true;
+      })();
+    `;
+  };
+
+  const sendBridgeCommand = (command: BridgeCommand) => {
+    webViewRef.current?.injectJavaScript(buildBridgeInjection(command));
   };
 
   const startBot = () => {
     if (isRunning) return;
-    const groupList = groups.split('\n').filter(g => g.trim() !== '');
-    if (groupList.length === 0) return alert('Dán link nhóm trước khi chạy!');
-    
+
+    const groupList = groups.split('\n').map((group) => group.trim()).filter(Boolean);
+    if (groupList.length === 0) {
+      Alert.alert('Thiếu danh sách nhóm', 'Dán link nhóm trước khi chạy bot.');
+      return;
+    }
+
     setIsRunning(true);
-    setCurrentGroupIndex(0);
-    setCurrentUrl(groupList[0]);
     addLog('Bắt đầu Bot -> ' + groupList[0]);
+
+    if (normalizeUrl(loadedUrlRef.current) === normalizeUrl(groupList[0])) {
+      sendBridgeCommand(buildStartCommand());
+      return;
+    }
+
+    setCurrentUrl(groupList[0]);
   };
 
   const stopBot = () => {
     setIsRunning(false);
-    webViewRef.current?.postMessage(JSON.stringify({ type: 'stop' }));
+    sendBridgeCommand({ type: 'stop' });
     addLog('Đã dừng bot khẩn cấp.');
   };
 
   const fetchGroups = () => {
+    if (isFetching) {
+      addLog('Đang quét nhóm, vui lòng chờ thêm một chút...');
+      return;
+    }
+
     setIsFetching(true);
-    setCurrentUrl('https://m.facebook.com/groups/?category=membership');
-    addLog('Đang chuyển hướng đến trang danh sách nhóm...');
-    // Give it more time to load before triggering script
+    setFetchedGroups([]);
+    setShowSelector(false);
+    addLog('Đang mở danh sách nhóm Facebook của bạn...');
+
+    if (normalizeUrl(loadedUrlRef.current) === normalizeUrl(GROUPS_MEMBERSHIP_URL)) {
+      sendBridgeCommand({ type: 'fetch_groups' });
+      return;
+    }
+
+    setCurrentUrl(GROUPS_MEMBERSHIP_URL);
   };
 
-  const onMessage = (event) => {
+  const onMessage = (event: { nativeEvent: { data: string } }) => {
     try {
-      const data = JSON.parse(event.nativeEvent.data);
+      const data = JSON.parse(event.nativeEvent.data) as BridgeMessage;
       if (data.type === 'log') {
-        addLog('Bot: ' + data.message);
-      } else if (data.type === 'progress') {
-        addLog('Đã bình luận thành công bài viết thứ ' + data.count);
-      } else if (data.type === 'groups_fetched') {
-        setFetchedGroups(data.message.map(g => ({ ...g, selected: true })));
-        setShowSelector(true);
-        setIsFetching(false);
-      }
-    } catch (e) {}
-  };
-
-  useEffect(() => {
-    if (isFetching && currentUrl.includes('membership')) {
-      const timer = setTimeout(() => {
-        webViewRef.current?.postMessage(JSON.stringify({ type: 'fetch_groups' }));
-      }, 5000); // Wait 5s for FB to load the list
-      return () => clearTimeout(timer);
-    }
-  }, [currentUrl, isFetching]);
-
-  const handleWebViewLoad = () => {
-    if (isRunning && !isFetching) {
-      const commentList = comments.split('\n').filter(c => c.trim() !== '');
-      webViewRef.current?.postMessage(JSON.stringify({
-        type: 'start',
-        config: {
-          maxPosts: parseInt(maxPosts),
-          delay: parseInt(delay),
-          comments: commentList
+        if (data.message) {
+          addLog('Bot: ' + data.message);
         }
-      }));
+      } else if (data.type === 'progress') {
+        const progressCount = typeof data.count === 'number' ? data.count : data.message?.count;
+        if (typeof progressCount === 'number') {
+          addLog('Đã bình luận thành công bài viết thứ ' + progressCount);
+        }
+      } else if (data.type === 'groups_fetch_started') {
+        if (data.message) {
+          addLog('Bot: ' + data.message);
+        }
+      } else if (data.type === 'groups_fetched') {
+        const availableGroups = Array.isArray(data.message)
+          ? data.message
+              .filter((group) => Boolean(group?.name && group?.url))
+              .map((group) => ({ ...group, selected: true }))
+          : [];
+
+        setIsFetching(false);
+        if (availableGroups.length === 0) {
+          addLog('Bot: Quét xong nhưng không có nhóm hợp lệ nào.');
+          Alert.alert('Không tìm thấy nhóm', 'Facebook không trả về nhóm hợp lệ trên trang hiện tại.');
+          return;
+        }
+
+        setFetchedGroups(availableGroups);
+        setShowSelector(true);
+        addLog('Bot: Đã lấy được ' + availableGroups.length + ' nhóm.');
+      } else if (data.type === 'groups_fetch_empty') {
+        setIsFetching(false);
+        setFetchedGroups([]);
+        setShowSelector(false);
+        const message = data.message || 'Không tìm thấy nhóm nào trên trang hiện tại.';
+        addLog('Bot: ' + message);
+        Alert.alert('Không tìm thấy nhóm', message);
+      } else if (data.type === 'groups_fetch_error') {
+        setIsFetching(false);
+        setFetchedGroups([]);
+        setShowSelector(false);
+        const message = data.message || 'Không thể lấy danh sách nhóm từ Facebook.';
+        addLog('Bot: ' + message);
+        Alert.alert('Không thể lấy nhóm', message);
+      }
+    } catch (error) {
+      addLog('Không đọc được phản hồi từ WebView.');
     }
   };
 
-  const toggleGroupSelection = (index) => {
-    const updated = [...fetchedGroups];
-    updated[index].selected = !updated[index].selected;
-    setFetchedGroups(updated);
+  const handleWebViewLoadEnd = (event: { nativeEvent: { url: string } }) => {
+    loadedUrlRef.current = event.nativeEvent.url;
+
+    if (isFetching) {
+      addLog('Trang danh sách nhóm đã tải, bắt đầu quét...');
+      sendBridgeCommand({ type: 'fetch_groups' });
+      return;
+    }
+
+    if (isRunning) {
+      sendBridgeCommand(buildStartCommand());
+    }
+  };
+
+  const toggleGroupSelection = (index: number) => {
+    setFetchedGroups((previousGroups) =>
+      previousGroups.map((group, groupIndex) =>
+        groupIndex === index ? { ...group, selected: !group.selected } : group
+      )
+    );
   };
 
   const confirmSelection = () => {
-    const selectedUrls = fetchedGroups
-      .filter(g => g.selected)
-      .map(g => g.url)
-      .join('\n');
+    const selectedGroups = fetchedGroups.filter((group) => group.selected);
+    if (selectedGroups.length === 0) {
+      Alert.alert('Chưa chọn nhóm', 'Hãy chọn ít nhất một nhóm để đưa vào danh sách chạy.');
+      return;
+    }
+
+    const selectedUrls = selectedGroups.map((group) => group.url).join('\n');
     setGroups(selectedUrls);
     setShowSelector(false);
-    addLog(`Đã chọn ${fetchedGroups.filter(g => g.selected).length} nhóm!`);
+    addLog('Đã chọn ' + selectedGroups.length + ' nhóm!');
   };
 
   return (
@@ -148,8 +282,10 @@ export default function App() {
             <View style={styles.card}>
               <View style={styles.rowBetween}>
                 <Text style={styles.label}>DANH SÁCH NHÓM (URL)</Text>
-                <TouchableOpacity onPress={fetchGroups}>
-                  <Text style={styles.fetchText}>[Lấy từ FB của tôi]</Text>
+                <TouchableOpacity disabled={isFetching} onPress={fetchGroups}>
+                  <Text style={[styles.fetchText, isFetching && styles.fetchTextDisabled]}>
+                    {isFetching ? '[Đang lấy nhóm...]' : '[Lấy từ FB của tôi]'}
+                  </Text>
                 </TouchableOpacity>
               </View>
               <TextInput 
@@ -243,8 +379,8 @@ export default function App() {
           ref={webViewRef}
           source={{ uri: currentUrl }}
           onMessage={onMessage}
-          injectedJavaScript={automationScript}
-          onLoad={handleWebViewLoad}
+          injectedJavaScript={facebookWebViewBridgeScript}
+          onLoadEnd={handleWebViewLoadEnd}
           javaScriptEnabled={true}
           domStorageEnabled={true}
           userAgent="Mozilla/5.0 (Linux; Android 10; SM-G981B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.162 Mobile Safari/537.36"
@@ -265,6 +401,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row' },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   fetchText: { color: '#2196F3', fontSize: 12, fontWeight: 'bold' },
+  fetchTextDisabled: { color: '#6b93c7' },
   actionRow: { flexDirection: 'row', marginTop: 10 },
   btn: { flex: 1, padding: 12, borderRadius: 5, alignItems: 'center', marginHorizontal: 2 },
   btnSave: { backgroundColor: '#333' },
