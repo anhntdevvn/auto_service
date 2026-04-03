@@ -123,3 +123,12 @@ dmypy.json
 # Pyre type checker
 .pyre/
 /chrome_data
+
+# Mobile / React Native
+mobile/node_modules/
+mobile/android/app/build/
+mobile/android/.gradle/
+mobile/.expo/
+*.apk
+*.aab
+node_modules/

@@ -2,7 +2,7 @@
   "name": "mobile",
   "version": "1.0.0",
   "description": "",
-  "main": "App.tsx",
+  "main": "node_modules/expo/AppEntry.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -17,5 +17,9 @@
     "react": "19.2.3",
     "react-native": "0.83.4",
     "react-native-webview": "13.16.1"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.10",
+    "typescript": "~5.9.2"
   }
 }
