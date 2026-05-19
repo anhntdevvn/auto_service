@@ -1,108 +1,172 @@
-# 📢 Bot Tự Động Bình Luận Facebook (Có Giao Diện)
+# Auto Service — Facebook Auto Comment Bot
 
-Chương trình này là một công cụ tự động hóa hành vi rảnh tay (Browser Automation) sử dụng **Selenium**, được thiết kế để tự động bình luận trên nền tảng Facebook (hỗ trợ cả bài viết cá nhân lẫn bài viết trong Hội Nhóm/Group). 
+Công cụ tự động bình luận Facebook sử dụng mô hình **Human-Like Simulation** (ngụy trang con người). Hỗ trợ cả phiên bản **Desktop/Web** và **Mobile (Android APK)**.
 
-Đặc biệt, công cụ này đã được **vô hiệu hóa việc trích xuất token OpenAI tốn phí**, và thay vào đó lấy bình luận trực tiếp từ file văn bản tĩnh trên máy bạn để hoàn toàn **miễn phí 100%**.
-
----
-
-## 🌟 Tại sao không cần Token? (Giải thích luồng hoạt động)
-
-Phần lớn các tool bot trên mạng yêu cầu **Access Token** hoặc **Cookie** qua API để gửi request tới máy chủ Facebook. Tuy nhiên, cách đó rất dễ bị Facebook khóa tài khoản (Check-point) vì nó phát hiện ra hành vi bất thường của máy móc.
-
-Tool này hoạt động theo mô hình **Ngụy trang con người (Human Like Simulation)**:
-1. Nó **Mở một trình duyệt Google Chrome thật sự** lên màn hình.
-2. Nó tái sử dụng chính tài khoản Facebook bạn đã đăng nhập để lướt web (không lấy cắp Cookie gửi lên mạng). Bạn chỉ việc đăng nhập một lần bằng tay, trình duyệt sẽ lưu phiên đăng nhập đó vào thư mục `chrome_data` nằm trên máy tính của bạn.
-3. Nó **tự động phân tích màn hình** trang Facebook, tìm xem ô gõ bình luận nằm ở đâu.
-4. Nó tự tạo ra thao tác **di chuyển chuột**, click chuột giống tay người.
-5. Nó lấy các câu lập trình sẵn từ file text, sau đó **nhập từng ký tự một** với tốc độ chập chờn (cố tình gõ sai rồi xóa đi gõ lại) giống y hệt một người dùng bình thường đang ngồi ấn phím.
-6. Sau khi Enter, nó sẽ cuộn chuột xuống bài đăng tiếp theo của Hội Nhóm và lặp lại vòng lặp.
-
-Nhờ việc bắt chước thao tác người thật như vậy, bạn **không cần thao tác Token phức tạp** nào cả mà vẫn vượt qua được các chốt chặn phát hiện Bot của nền tảng web.
+> **Miễn phí 100%** — không cần Access Token hay Cookie. Bot hoạt động bằng cách mở trình duyệt thật và mô phỏng thao tác người dùng.
 
 ---
 
-## 🛠️ Hướng dẫn sử dụng
+## Mục lục
 
-### 1. Chuẩn bị nội dung bình luận
-Mở file `comments.txt` nằm chung thư mục. Hãy nhập vào tất cả các câu bình luận mà bạn muốn bot tự động gõ. 
-Mỗi bình luận viết trên 1 dòng. Tool sẽ chọn ngẫu nhiên một dòng để bình luận vào giao diện.
+- [Tính năng chính](#tính-năng-chính)
+- [Công nghệ sử dụng](#công-nghệ-sử-dụng)
+- [Cấu trúc dự án](#cấu-trúc-dự-án)
+- [Cài đặt & Khởi chạy](#cài-đặt--khởi-chạy)
+  - [Web / Desktop](#web--desktop-web)
+  - [Mobile APK](#mobile-apk-mobile)
+- [Cách hoạt động](#cách-hoạt-động)
+- [Lưu ý an toàn](#lưu-ý-an-toàn)
 
-### 2. Khởi chạy Ứng dụng
-Bạn đã cài đặt xong môi trường, từ giờ bạn chỉ cần mở Terminal và gõ:
-```bash
-python3 gui.py
+---
+
+## Tính năng chính
+
+- Tự động bình luận trên bài viết cá nhân và bài viết trong Group.
+- Giao diện Desktop (customtkinter) và Web Dashboard (Flask + SocketIO).
+- Ứng dụng Mobile (React Native + Expo) — build thành APK chạy độc lập trên Android.
+- Mô phỏng hành vi người thật: di chuột, gõ phím chậm, gõ sai rồi sửa, cuộn trang tự nhiên.
+- Nội dung bình luận được lấy ngẫu nhiên từ file `comments.txt` — dễ dàng tùy chỉnh.
+
+---
+
+## Công nghệ sử dụng
+
+| Thành phần | Công nghệ |
+|---|---|
+| Web Bot Core | Python 3, Selenium, webdriver-manager |
+| Desktop GUI | customtkinter |
+| Web Dashboard | Flask, Flask-SocketIO, Flask-CORS |
+| Mobile App | React Native (Expo), TypeScript, WebView |
+| Linting | pre-commit (trailing-whitespace, end-of-file-fixer, ...) |
+
+---
+
+## Cấu trúc dự án
+
 ```
-> Lúc này cửa sổ **tối màu (Dark Mode)** của ứng dụng sẽ xuất hiện.
-
-### 3. Thiết lập thông số & Chạy
-- **Group/Post URL:** Dán link của Nhóm (Group) hoặc Bài viết (Post) mà bạn muốn thả bình luận.
-- **Max Posts:** Giới hạn tổng số lượng bài viết mà script sẽ cày (Ví dụ: 10 bài là ngưng).
-- **Delay:** Thời gian nghỉ ngơi để uống nước giữa 2 bài liên tiếp (Nên để 5-10 giây để an toàn).
-- **Bắt đầu (Start Bot):** Nhấn nút này lúc đã sẵn sàng.
-
-> **LƯU Ý LẦN ĐẦU TIÊN CHẠY:**
-> Khi Trình duyệt web tự động hiện lên, nếu Facebook yêu cầu, hãy tự động gõ mật khẩu đăng nhập Facebook của bạn vào trình duyệt. Sau khi đăng nhập xong, bot sẽ nạp lại trang và bắt đầu đi "spam dạo". Các lần chạy lại hôm sau bạn không cần đăng nhập nữa.
-
----
-
-## ⚠️ Lưu ý an toàn
-Mặc dù công cụ được tối ưu chống Bot (Anti-detect), nhưng nếu bạn thiết lập bình luận **quá nhanh** (delay siêu ngắn) hay thiết lập **quá nhiều** (Max Post: 1000) trong thời gian ngắn, hệ thống AI đo lường tần suất của Facebook vẫn có thể tạm thời khóa mõm (Block Comment) của tài khoản bạn vài ngày do vi phạm Tiêu chuẩn Cộng đồng. Hãy thiết lập một cách từ từ và có khoa học!
----
-
-## 📂 Cấu trúc Dự án
-
-Dự án hiện tại được chia làm 2 phần độc lập:
-
-1.  **`web/`**: Chứa code Python + Selenium + Flask. Dùng để chạy bot trên máy tính hoặc điều khiển từ xa qua trình duyệt.
-2.  **`mobile/`**: Chứa code **React Native (Standalone APK)**. Dùng để build thành 1 file APK chạy bot tự động 100% trên điện thoại mà không cần máy tính.
-
----
-
-## 💻 Hướng dẫn Web & Desktop (`web/`)
-
-### 1. Khởi chạy Giao diện Desktop
-```bash
-cd web
-python3 gui.py
+auto_service/
+├── README.md
+├── comments.txt            # Danh sách bình luận mẫu
+├── groups.txt              # Danh sách group mẫu
+├── .pre-commit-config.yaml
+├── web/                    # Phiên bản Desktop & Web
+│   ├── gui.py              # Entry point — giao diện Desktop
+│   ├── app.py              # Entry point thay thế (gọi gui)
+│   ├── main.py             # Core bot logic
+│   ├── server.py           # Flask + SocketIO backend
+│   ├── requirements.txt
+│   ├── templates/
+│   │   └── index.html      # Web dashboard
+│   └── src/
+│       ├── core/
+│       │   ├── facebook_bot.py
+│       │   ├── browser.py
+│       │   ├── group_scraper.py
+│       │   └── human_actions.py
+│       ├── gui/
+│       │   └── main_window.py
+│       └── utils/
+│           ├── file_parser.py
+│           └── logger.py
+└── mobile/                 # Phiên bản Android APK
+    ├── App.tsx              # Entry point React Native
+    ├── package.json
+    ├── tsconfig.json
+    ├── app.json
+    ├── src/
+    │   ├── automation.js
+    │   ├── automation_string.js
+    │   ├── automation_string.ts
+    │   └── facebook_webview_bridge.ts
+    └── android/             # Native Android project
 ```
 
-### 2. Khởi chạy Backend Điều khiển từ xa
+---
+
+## Cài đặt & Khởi chạy
+
+### Yêu cầu chung
+
+- Git
+- Python >= 3.9 (cho phiên bản Web/Desktop)
+- Node.js >= 18 (cho phiên bản Mobile)
+
+### Web / Desktop (`web/`)
+
 ```bash
+# 1. Clone repo
+git clone https://github.com/anhntdevvn/auto_service.git
+cd auto_service
+
+# 2. Cài đặt dependencies
 cd web
+pip install -r requirements.txt
+
+# 3. Chuẩn bị nội dung bình luận
+#    Mở file comments.txt và nhập mỗi câu bình luận trên 1 dòng.
+
+# 4a. Chạy giao diện Desktop
+python3 gui.py
+
+# 4b. Hoặc chạy Web Dashboard (điều khiển từ xa)
 python3 server.py
+# Truy cập dashboard tại: http://localhost:5000
 ```
-*Truy cập dashboard tại: `http://localhost:5000`*
 
----
+**Thiết lập thông số:**
 
-## 📱 Hướng dẫn Mobile APK Bot (`mobile/`)
+| Thông số | Mô tả |
+|---|---|
+| Group/Post URL | Link của Group hoặc bài viết cần bình luận |
+| Max Posts | Số bài viết tối đa bot sẽ xử lý |
+| Delay (giây) | Thời gian chờ giữa 2 bài liên tiếp (khuyến nghị 5–10s) |
 
-Đây là bản **Standalone APK** — một ứng dụng Android độc lập, có sẵn trình duyệt và bộ tự động hóa bên trong. Bạn chỉ cần cài 1 file APK duy nhất là có thể chạy bot 100% trên điện thoại.
+> **Lần đầu chạy:** Trình duyệt Chrome sẽ mở lên — hãy đăng nhập Facebook thủ công. Phiên đăng nhập được lưu vào `chrome_data/`, các lần sau không cần đăng nhập lại.
 
-### 1. Cơ chế hoạt động
-- App tích hợp một vùng trình duyệt (WebView) để chạy Facebook Mobile.
-- Bot sẽ tự động "bơm" JavaScript vào trình duyệt này để thực hiện các thao tác bình luận.
-- Mọi dữ liệu (Group, Comment) được lưu trực tiếp trên bộ nhớ điện thoại.
+### Mobile APK (`mobile/`)
 
-### 2. Cách Build & Cài đặt
-Để tạo ra file APK và cài vào máy, hãy chạy lệnh sau từ máy tính (yêu cầu cắm cáp USB và cài Android SDK):
+Ứng dụng Android độc lập — tích hợp WebView và bộ tự động hóa JavaScript bên trong.
+
 ```bash
 cd mobile
-# Cài đặt môi trường và build thẳng vào điện thoại
-export ANDROID_HOME="$HOME/Android/Sdk" && \
-export PATH="$PATH:$ANDROID_HOME/platform-tools" && \
+
+# Cài đặt dependencies
+npm install
+
+# Build & cài thẳng vào điện thoại (yêu cầu cắm USB + Android SDK)
+export ANDROID_HOME="$HOME/Android/Sdk"
+export PATH="$PATH:$ANDROID_HOME/platform-tools"
 npx expo run:android
 ```
 
-### 3. Cách sử dụng trên điện thoại
-1. Mở app **Facebook Auto Comment Bot** vừa được cài đặt.
-2. Đăng nhập tài khoản Facebook của bạn ngay trong App (phần trình duyệt phía dưới).
-3. Tại bảng điều khiển:
-    - Nhập danh sách Group và nội dung Comment.
-    - Nhấn **Lưu dữ liệu**.
-    - Nhấn **Bắt đầu chạy**.
-4. Theo dõi tiến độ tại mục **Nhật ký hoạt động**.
+**Cách sử dụng trên điện thoại:**
+
+1. Mở app **Facebook Auto Comment Bot**.
+2. Đăng nhập Facebook trong phần trình duyệt phía dưới.
+3. Nhập danh sách Group và nội dung Comment tại bảng điều khiển.
+4. Nhấn **Lưu dữ liệu** → **Bắt đầu chạy**.
+5. Theo dõi tiến độ tại mục **Nhật ký hoạt động**.
 
 ---
-# auto_service
+
+## Cách hoạt động
+
+Bot **không** sử dụng Access Token hay Cookie API — thay vào đó, nó mô phỏng hành vi người dùng thật:
+
+1. Mở trình duyệt Chrome thật (Desktop) hoặc WebView (Mobile).
+2. Tái sử dụng phiên đăng nhập Facebook đã lưu (không gửi Cookie lên server nào).
+3. Tự động phân tích giao diện trang Facebook để tìm ô bình luận.
+4. Di chuyển chuột và click giống tay người.
+5. Gõ từng ký tự với tốc độ ngẫu nhiên, cố tình gõ sai rồi sửa — mô phỏng người thật.
+6. Sau khi gửi bình luận, cuộn xuống bài tiếp theo và lặp lại.
+
+Nhờ kỹ thuật **Human-Like Simulation**, bot vượt qua các cơ chế phát hiện tự động của Facebook mà không cần thao tác Token phức tạp.
+
+---
+
+## Lưu ý an toàn
+
+- **Delay hợp lý:** Đặt delay ít nhất 5–10 giây giữa các bài viết.
+- **Giới hạn số lượng:** Không nên đặt Max Posts quá cao (> 50) trong một phiên.
+- **Nguy cơ:** Nếu bình luận quá nhanh hoặc quá nhiều, Facebook có thể tạm khóa chức năng bình luận của tài khoản vài ngày do vi phạm Tiêu chuẩn Cộng đồng.
+- **Khuyến nghị:** Chạy từ từ, chia nhỏ các phiên, và theo dõi trạng thái tài khoản thường xuyên.
